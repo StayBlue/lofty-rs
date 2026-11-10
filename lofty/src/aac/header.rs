@@ -106,6 +106,14 @@ impl ADTSHeader {
 
 		let len =
 			(u16::from(byte4 & 0b11) << 11) | (u16::from(byte5) << 3) | (u16::from(byte6) >> 5);
+
+		// The length includes the header, so anything shorter cannot be a frame
+		let header_len = if needs_crc_skip { 9 } else { 7 };
+		if len < header_len {
+			log::debug!("Encountered an ADTS frame shorter than its header, skipping");
+			return Ok(None);
+		}
+
 		let bitrate = ((u32::from(len) * sample_rate / 1024) * 8) / 1024;
 
 		if needs_crc_skip {
