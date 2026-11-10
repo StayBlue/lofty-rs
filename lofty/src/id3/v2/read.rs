@@ -145,7 +145,8 @@ where
 	let mut tag = Id3v2Tag::default();
 	tag.original_version = header.version;
 	tag.set_flags(header.flags);
-	tag.frames = read_all_frames_into_list(reader, header.version, header.flags, parse_options)?;
+	tag.frames =
+		read_all_frames_into_list(reader, header.version, header.flags, parse_options, false)?;
 
 	Ok(tag)
 }
@@ -155,11 +156,12 @@ pub(super) fn read_all_frames_into_list(
 	version: Id3v2Version,
 	flags: Id3v2TagFlags,
 	parse_options: ParseOptions,
+	embedded: bool,
 ) -> Result<FrameList<'static>, FrameParseError> {
 	let mut list = FrameList::default();
 
 	loop {
-		match ParsedFrame::read(reader, version, flags, parse_options)? {
+		match ParsedFrame::read(reader, version, flags, parse_options, embedded)? {
 			ParsedFrame::Next(frame) => {
 				let frame_value_is_empty = frame.is_empty();
 				if let Some(replaced_frame) = list.insert(frame) {

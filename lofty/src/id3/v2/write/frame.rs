@@ -1,5 +1,6 @@
 use crate::config::WriteOptions;
 use crate::id3::v2::frame::error::FrameEncodingError;
+use crate::id3::v2::frame::list::FrameList;
 use crate::id3::v2::frame::{FrameEncodingContext, FrameFlags};
 use crate::id3::v2::tag::GenresIter;
 use crate::id3::v2::util::synchsafe::SynchsafeInteger;
@@ -50,6 +51,35 @@ where
 	}
 
 	Ok(())
+}
+
+// Writes the frames embedded in a `CHAP` or `CTOC` frame
+pub(in crate::id3::v2) fn create_embedded_items<W>(
+	writer: &mut W,
+	frames: &FrameList<'_>,
+	version: Id3v2Version,
+	write_options: WriteOptions,
+) -> Result<(), FrameEncodingError>
+where
+	W: Write,
+{
+	// Mirrors the restriction in `ParsedFrame::read()`
+	if let Some(frame) = frames
+		.iter()
+		.find(|frame| matches!(frame.id_str(), "CHAP" | "CTOC"))
+	{
+		return Err(FrameEncodingError::message(
+			Some(frame.id().to_owned()),
+			"chapter frames cannot be embedded in other chapter frames",
+		));
+	}
+
+	let frames = &mut frames.iter().map(Frame::borrow);
+	match version {
+		Id3v2Version::V4 => create_items(writer, frames, write_options),
+		Id3v2Version::V3 => create_items_v3(writer, frames, write_options),
+		Id3v2Version::V2 => Err(FrameEncodingError::unsupported_version(version)),
+	}
 }
 
 pub(in crate::id3::v2) fn create_items_v3<W>(

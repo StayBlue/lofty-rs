@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `FrameList::remove()` is now order-preserving ([PR](https://github.com/Serial-ATA/lofty-rs/pull/778))
   - Undersized frames will no longer error in relaxed mode ([issue](https://github.com/Serial-ATA/lofty-rs/issues/768)) ([PR](https://github.com/Serial-ATA/lofty-rs/pull/781))
     - They will still produce an error in best attempt (default) and strict mode
+  - `CHAP` and `CTOC` frames embedded in another `CHAP` or `CTOC` frame will now be skipped. Strict mode
+    will return an error, as will attempting to write them.
 
 ### Fixed
 
@@ -43,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       source `Tag` contained multiple.
   - `FrameParseError` and `FrameEncodingError` can now be converted into `TagParseError` and `TagEncodingError`, respectively ([issue](https://github.com/Serial-ATA/lofty-rs/issues/728)) ([PR](https://github.com/Serial-ATA/lofty-rs/pull/776))
   - Fixed parsing and encoding of ID3v2.3 extended headers ([issue](https://github.com/Serial-ATA/lofty-rs/issues/761)) ([PR](https://github.com/Serial-ATA/lofty-rs/pull/777))
+  - Fixed stack overflow when reading deeply nested `CHAP`/`CTOC` frames
 - **APE**: Fixed parsing of headerless APEv2 tags ([issue](https://github.com/Serial-ATA/lofty-rs/issues/759)) ([PR](https://github.com/Serial-ATA/lofty-rs/pull/779))
 - **AAC**: Fixed infinite loop when reading ADTS frames with a length shorter than their header
 

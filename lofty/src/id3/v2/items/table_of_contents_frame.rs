@@ -5,7 +5,7 @@ use crate::id3::v2::error::{FrameEncodingError, FrameParseError};
 use crate::id3::v2::frame::list::FrameList;
 use crate::id3::v2::read::read_all_frames_into_list;
 use crate::id3::v2::tag::TITLE_ID;
-use crate::id3::v2::{Frame, FrameFlags, FrameHeader, FrameId, Id3v2TagFlags, Id3v2Version};
+use crate::id3::v2::{FrameFlags, FrameHeader, FrameId, Id3v2TagFlags, Id3v2Version};
 use crate::util::alloc::VecFallibleCapacity;
 use crate::util::text::{TextDecodeOptions, TextEncoding, decode_text};
 
@@ -210,19 +210,12 @@ impl<'a> ChapterTableOfContentsFrame<'a> {
 				TextEncoding::Latin1.encode(entry, true, write_options.lossy_text_encoding)?;
 			content.write_all(&entry)?;
 		}
-		match version {
-			Id3v2Version::V4 => crate::id3::v2::write::frame::create_items(
-				&mut content,
-				&mut children.iter().map(Frame::borrow),
-				write_options,
-			)?,
-			Id3v2Version::V3 => crate::id3::v2::write::frame::create_items_v3(
-				&mut content,
-				&mut children.iter().map(Frame::borrow),
-				write_options,
-			)?,
-			Id3v2Version::V2 => unreachable!(),
-		}
+		crate::id3::v2::write::frame::create_embedded_items(
+			&mut content,
+			children,
+			version,
+			write_options,
+		)?;
 
 		Ok(content.into_inner())
 	}
@@ -271,8 +264,13 @@ impl ChapterTableOfContentsFrame<'static> {
 			entries.push(Cow::Owned(entry.content));
 		}
 
-		let children =
-			read_all_frames_into_list(reader, version, Id3v2TagFlags::default(), parse_options)?;
+		let children = read_all_frames_into_list(
+			reader,
+			version,
+			Id3v2TagFlags::default(),
+			parse_options,
+			true,
+		)?;
 
 		let header = FrameHeader::new(FRAME_ID, frame_flags);
 		Ok(ChapterTableOfContentsFrame {
@@ -300,7 +298,7 @@ impl ChapterTableOfContentsFrame<'_> {
 #[cfg(test)]
 mod tests {
 	use crate::TextEncoding;
-	use crate::config::{ParseOptions, WriteOptions};
+	use crate::config::{ParseOptions, ParsingMode, WriteOptions};
 	use crate::id3::v2::items::table_of_contents_frame::{ChapterTableOfContentsFrame, CtocFlags};
 	use crate::id3::v2::{
 		Frame, FrameFlags, FrameId, FrameList, Id3v2Tag, Id3v2Version, TextInformationFrame,
@@ -391,5 +389,58 @@ mod tests {
 		// Only 1 CTOC can be rooted, we end up discarding TOC2, TOC3, and TOC4 when encoding.
 		assert_eq!(toc_frames.len(), 1);
 		assert_eq!(toc_frames[0].id, "TOC1");
+	}
+
+	// `expected()`, with a second `CTOC` embedded after the title
+	fn nested() -> ChapterTableOfContentsFrame<'static> {
+		let mut nested = expected();
+		nested.children.push(Frame::TableOfContents(expected()));
+		nested
+	}
+
+	fn nested_bytes() -> Vec<u8> {
+		let inner = expected()
+			.as_bytes(Id3v2Version::V4, WriteOptions::default())
+			.unwrap();
+
+		let mut bytes = inner.clone();
+		bytes.extend_from_slice(b"CTOC");
+		bytes.extend_from_slice(&(inner.len() as u32).to_be_bytes());
+		bytes.extend_from_slice(&[0, 0]);
+		bytes.extend_from_slice(&inner);
+		bytes
+	}
+
+	#[test_log::test]
+	fn ctoc_decode_nested() {
+		let bytes = nested_bytes();
+
+		let parsed_ctoc = ChapterTableOfContentsFrame::parse(
+			&mut &bytes[..],
+			ParseOptions::default(),
+			Id3v2Version::V4,
+			FrameFlags::default(),
+		)
+		.unwrap();
+		assert_eq!(parsed_ctoc.children, expected().children);
+
+		assert!(
+			ChapterTableOfContentsFrame::parse(
+				&mut &bytes[..],
+				ParseOptions::default().parsing_mode(ParsingMode::Strict),
+				Id3v2Version::V4,
+				FrameFlags::default(),
+			)
+			.is_err()
+		);
+	}
+
+	#[test_log::test]
+	fn ctoc_encode_nested() {
+		assert!(
+			nested()
+				.as_bytes(Id3v2Version::V4, WriteOptions::default())
+				.is_err()
+		);
 	}
 }

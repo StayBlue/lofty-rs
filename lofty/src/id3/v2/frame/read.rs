@@ -26,6 +26,7 @@ impl ParsedFrame<'static> {
 		version: Id3v2Version,
 		tag_flags: Id3v2TagFlags,
 		parse_options: ParseOptions,
+		embedded: bool,
 	) -> Result<Self, FrameParseError>
 	where
 		R: Read + ?Sized,
@@ -59,6 +60,22 @@ impl ParsedFrame<'static> {
 		};
 
 		if !parse_options.read_cover_art && id == ATTACHED_PICTURE_ID {
+			skip_frame(Some(id), reader, size)?;
+			return Ok(Self::Skip);
+		}
+
+		// Chapter frames reference each other by element ID, they are never nested. Parsing them
+		// here would also allow for unbounded recursion.
+		if embedded && matches!(id.as_str(), "CHAP" | "CTOC") {
+			if parse_options.parsing_mode == ParsingMode::Strict {
+				return Err(FrameParseError::message(
+					Some(id),
+					"chapter frames cannot be embedded in other chapter frames",
+				));
+			}
+
+			log::warn!("Encountered an embedded `{id}` frame, skipping");
+
 			skip_frame(Some(id), reader, size)?;
 			return Ok(Self::Skip);
 		}
